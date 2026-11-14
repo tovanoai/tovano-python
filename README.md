@@ -210,6 +210,10 @@ uv run ruff check .
 uv build
 ```
 
+## Support
+
+Questions and bug reports: [tovano.ai/contact/support](https://tovano.ai/contact/support).
+
 ## License
 
 MIT
