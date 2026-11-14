@@ -1,0 +1,58 @@
+name: Publish to PyPI
+
+# Runs when a GitHub release tagged vX.Y.Z is published. Needs an approval in the
+# "pypi" environment. Uses PyPI trusted publishing (OIDC): no token is stored.
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Build and check only, do not publish
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.event.release.tag_name, 'v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - name: Tag matches package version
+        if: github.event_name == 'release'
+        run: |
+          want="${GITHUB_REF_NAME#v}"
+          have="$(sed -n 's/^version = "\(.*\)"/\1/p' pyproject.toml)"
+          src="$(sed -n 's/__version__ = "\(.*\)"/\1/p' src/tovano/_version.py)"
+          [ "$want" = "$have" ] && [ "$want" = "$src" ] || { echo "tag $want, pyproject $have, _version.py $src"; exit 1; }
+      - run: uv sync --locked
+      - run: uv run ruff check . && uv run mypy
+      - run: uv run pytest
+        env:
+          TOVANO_SKIP_INTEGRATION: "1"
+      - run: uv build
+      - run: uvx twine check --strict dist/*
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    needs: build
+    if: github.event_name == 'release' || !inputs.dry_run
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write # trusted publishing
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1

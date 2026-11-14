@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ["3.9", "3.10", "3.11", "3.12", "3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: ${{ matrix.python }}
+      - run: uv sync --locked
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run mypy
+        if: matrix.python != '3.9'
+      # The integration tests need the private Tovano server; they run in the server repo's CI.
+      - run: uv run pytest
+        env:
+          TOVANO_SKIP_INTEGRATION: "1"
+      - run: uv build
+      - name: Examples run (offline mode)
+        run: for f in examples/[a-z]*.py; do echo "== $f"; uv run python "$f"; done
+
+  install-from-git:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: pip install from this commit
+        run: |
+          python -m venv /tmp/v
+          /tmp/v/bin/pip install "git+https://github.com/${{ github.repository }}@${{ github.sha }}"
+          /tmp/v/bin/python -c "import tovano; print(tovano.__version__, tovano.format_usd(48000))"
