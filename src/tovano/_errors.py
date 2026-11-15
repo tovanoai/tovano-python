@@ -26,8 +26,8 @@ __all__ = [
     "ProviderError",
     "APIConnectionError",
     "APITimeoutError",
-    "TaskTimeoutError",
-    "TaskFailedError",
+    "RunTimeoutError",
+    "RunFailedError",
     "WebhookVerificationError",
 ]
 
@@ -99,7 +99,7 @@ class PermissionDeniedError(APIError):
 
 
 class NotFoundError(APIError):
-    """404: unknown model or task."""
+    """404: unknown model or run."""
 
 
 class ConflictError(APIError):
@@ -131,29 +131,29 @@ class APITimeoutError(APIConnectionError):
     """No response within ``timeout``."""
 
 
-class TaskTimeoutError(TovanoError):
-    """``tasks.wait()`` gave up before the task finished. The task keeps running."""
+class RunTimeoutError(TovanoError):
+    """``runs.wait()`` gave up before the run finished. The run keeps running."""
 
-    def __init__(self, task_id: str, timeout: float) -> None:
+    def __init__(self, run_id: str, timeout: float) -> None:
         super().__init__(
-            f"Task {task_id} did not finish within {timeout:g} s. It is still running.",
-            code="task_timeout",
+            f"Run {run_id} did not finish within {timeout:g} s. It is still running.",
+            code="run_timeout",
             type="client_error",
         )
-        self.task_id = task_id
+        self.run_id = run_id
 
 
-class TaskFailedError(TovanoError):
-    """``tasks.run(..., raise_on_failure=True)``: the task failed. It was not charged."""
+class RunFailedError(TovanoError):
+    """``runs.run(..., raise_on_failure=True)``: the run failed. It was not charged."""
 
-    def __init__(self, task: Any) -> None:
-        err = task.get("error") or {}
+    def __init__(self, run: Any) -> None:
+        err = run.get("error") or {}
         super().__init__(
-            err.get("message") or f"Task {task['id']} failed.",
-            code=err.get("code") or "task_failed",
-            type="task_error",
+            err.get("message") or f"Run {run['id']} failed.",
+            code=err.get("code") or "run_failed",
+            type="run_error",
         )
-        self.task = task
+        self.run = run
 
 
 class WebhookVerificationError(TovanoError):

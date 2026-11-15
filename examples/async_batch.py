@@ -10,13 +10,13 @@ from tovano import format_usd
 async def main() -> None:
     async with async_client() as client:
         video, voice, images = await asyncio.gather(
-            client.tasks.run(
+            client.runs.run(
                 model="video/kling-2.1-pro", input={"prompt": "Waves on a beach at sunrise", "duration": 5}
             ),
-            client.tasks.run(
+            client.runs.run(
                 model="audio/eleven-multilingual-v2", input={"text": "Fresh coffee, every morning.", "voice": "rachel"}
             ),
-            client.tasks.run(model="image/flux-1.1-pro", input={"prompt": "Blue mug on oak", "n": 3}),
+            client.runs.run(model="image/flux-1.1-pro", input={"prompt": "Blue mug on oak", "n": 3}),
         )
         print("Video:", video.output.video.url, format_usd(video.charged_micro))
         print("Voice:", voice.output.audio.url, format_usd(voice.charged_micro))

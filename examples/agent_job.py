@@ -4,7 +4,7 @@ from _client import client
 
 from tovano import format_usd
 
-job = client.tasks.run(
+job = client.runs.run(
     model="agent/ad-kit",
     input={"product": "A hand-thrown blue ceramic mug", "audience": "coffee lovers", "tone": "premium"},
 )

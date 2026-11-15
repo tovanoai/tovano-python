@@ -55,7 +55,7 @@ class ChatStreamResult(TovanoObject):
 class _StreamState:
     def __init__(self, response: httpx.Response) -> None:
         self.response = response
-        self.task_id: Optional[str] = response.headers.get("x-tovano-task-id")
+        self.run_id: Optional[str] = response.headers.get("x-tovano-run-id")
         self.request_id: Optional[str] = response.headers.get("x-request-id")
         self.content = ""
         self.finish_reason: Optional[str] = None
@@ -112,9 +112,9 @@ class ChatCompletionStream:
         return self._state.response
 
     @property
-    def task_id(self) -> Optional[str]:
-        """The task that records this call (``X-Tovano-Task-Id``)."""
-        return self._state.task_id
+    def run_id(self) -> Optional[str]:
+        """The run that records this call (``X-Tovano-Run-Id``)."""
+        return self._state.run_id
 
     @property
     def request_id(self) -> Optional[str]:
@@ -167,8 +167,8 @@ class AsyncChatCompletionStream:
         return self._state.response
 
     @property
-    def task_id(self) -> Optional[str]:
-        return self._state.task_id
+    def run_id(self) -> Optional[str]:
+        return self._state.run_id
 
     @property
     def request_id(self) -> Optional[str]:

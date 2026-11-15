@@ -75,7 +75,7 @@ class ClientConfig:
         if has_body:
             h["content-type"] = "application/json"
         if method == "POST":
-            # A retry with the same key never runs a task twice.
+            # A retry with the same key never starts a run twice.
             h["idempotency-key"] = idempotency_key or uuid.uuid4().hex
         tag = customer or self.customer
         if tag:

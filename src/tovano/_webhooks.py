@@ -1,6 +1,6 @@
 """Webhook signatures.
 
-Tovano POSTs the task object to your ``webhook_url`` with the header::
+Tovano POSTs the run object to your ``webhook_url`` with the header::
 
     Tovano-Signature: t=<unix seconds>,v1=<hex HMAC-SHA256 of "<t>.<raw body>">
 
@@ -16,7 +16,7 @@ import time
 from typing import Optional, Union
 
 from ._errors import WebhookVerificationError
-from ._types import Task
+from ._types import Run
 
 __all__ = ["SIGNATURE_HEADER", "verify", "assert_valid", "construct_event", "sign"]
 
@@ -86,11 +86,11 @@ def verify(
 
 def construct_event(
     body: Body, signature: Optional[str], secret: str, *, tolerance: int = 300, now: Optional[int] = None
-) -> Task:
-    """Verifies the signature and returns the task. Raises :class:`WebhookVerificationError`."""
+) -> Run:
+    """Verifies the signature and returns the run. Raises :class:`WebhookVerificationError`."""
     assert_valid(body, signature, secret, tolerance=tolerance, now=now)
     try:
-        return Task(json.loads(_bytes(body)))
+        return Run(json.loads(_bytes(body)))
     except (ValueError, TypeError) as e:
         raise WebhookVerificationError("Webhook body is not valid JSON.") from e
 

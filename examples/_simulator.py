@@ -77,7 +77,7 @@ REPLY = (
 
 def simulated_transport(start_balance_micro: int = 25_000_000) -> httpx.MockTransport:
     state: Dict[str, Any] = {"balance": start_balance_micro}
-    tasks: Dict[str, Dict[str, Any]] = {}
+    runs: Dict[str, Dict[str, Any]] = {}
     counter = itertools.count(1)
 
     def new_id(prefix: str) -> str:
@@ -135,16 +135,16 @@ def simulated_transport(start_balance_micro: int = 25_000_000) -> httpx.MockTran
         elif model.startswith("agent/"):
             t["steps"] = [
                 {
-                    "id": new_id("tsk"),
-                    "object": "task",
+                    "id": new_id("run"),
+                    "object": "run",
                     "status": "completed",
                     "model": "text/gpt-4.1-mini",
                     "name": "copy",
                     "charged_micro": 190,
                 },
                 {
-                    "id": new_id("tsk"),
-                    "object": "task",
+                    "id": new_id("run"),
+                    "object": "run",
                     "status": "completed",
                     "model": "image/flux-schnell",
                     "name": "image",
@@ -194,15 +194,15 @@ def simulated_transport(start_balance_micro: int = 25_000_000) -> httpx.MockTran
                     "currency": "usd",
                 }
             )
-        if method == "POST" and path == "/v1/tasks":
+        if method == "POST" and path == "/v1/runs":
             m = next((x for x in _MODELS if x["id"] == body.get("model")), None)
             if not m:
                 return fail(404, "not_found", "Model not found.")
             if state["balance"] <= 0:
                 return fail(402, "insufficient_credits", "Add credits to continue.")
             t = {
-                "id": new_id("tsk"),
-                "object": "task",
+                "id": new_id("run"),
+                "object": "run",
                 "model": m["id"],
                 "status": "queued",
                 "customer": customer,
@@ -218,18 +218,18 @@ def simulated_transport(start_balance_micro: int = 25_000_000) -> httpx.MockTran
                 "completed_at": None,
                 "_ready": time.time() + 0.6,
             }
-            tasks[t["id"]] = t
+            runs[t["id"]] = t
             return reply({k: v for k, v in t.items() if not k.startswith("_")}, 201)
-        if method == "GET" and path.startswith("/v1/tasks/"):
-            t = tasks.get(path[len("/v1/tasks/") :])
-            return reply(view(t)) if t else fail(404, "not_found", "Task not found.")
-        if method == "GET" and path == "/v1/tasks":
-            data = [view(t) for t in reversed(list(tasks.values()))]
+        if method == "GET" and path.startswith("/v1/runs/"):
+            t = runs.get(path[len("/v1/runs/") :])
+            return reply(view(t)) if t else fail(404, "not_found", "Run not found.")
+        if method == "GET" and path == "/v1/runs":
+            data = [view(t) for t in reversed(list(runs.values()))]
             return reply({"object": "list", "data": data, "next_cursor": None, "has_more": False, "total": len(data)})
         if method == "GET" and path == "/v1/usage":
             by = request.url.params.get("group_by", "model")
             groups: Dict[str, Dict[str, Any]] = {}
-            for t in tasks.values():
+            for t in runs.values():
                 finish(t)
                 key = str(t["customer"] if by == "customer" else t["model"])
                 g = groups.setdefault(
@@ -237,7 +237,7 @@ def simulated_transport(start_balance_micro: int = 25_000_000) -> httpx.MockTran
                     {
                         "key": key,
                         "type": None,
-                        "tasks": 0,
+                        "runs": 0,
                         "failed": 0,
                         "unit": None,
                         "units": None,
@@ -246,7 +246,7 @@ def simulated_transport(start_balance_micro: int = 25_000_000) -> httpx.MockTran
                         "output_tokens": 0,
                     },
                 )
-                g["tasks"] += 1
+                g["runs"] += 1
                 g["charged_micro"] += t["charged_micro"]
             total = sum(g["charged_micro"] for g in groups.values())
             return reply(
@@ -256,9 +256,9 @@ def simulated_transport(start_balance_micro: int = 25_000_000) -> httpx.MockTran
                     "from": "2026-11-01T00:00:00.000Z",
                     "to": now(),
                     "total_micro": total,
-                    "total_tasks": len(tasks),
+                    "total_runs": len(runs),
                     "total": {
-                        "tasks": len(tasks),
+                        "runs": len(runs),
                         "failed": 0,
                         "charged_micro": total,
                         "input_tokens": 0,
@@ -280,9 +280,9 @@ def simulated_transport(start_balance_micro: int = 25_000_000) -> httpx.MockTran
                 (prompt_tokens * _price(m) + completion_tokens * _price(m, "output_price_micro")) / 1_000_000
             )
             state["balance"] -= charged
-            task_id = new_id("tsk")
-            base = {"id": f"chatcmpl-{task_id}", "created": int(time.time()), "model": body.get("model")}
-            billing = {"task_id": task_id, "charged_micro": charged}
+            run_id = new_id("run")
+            base = {"id": f"chatcmpl-{run_id}", "created": int(time.time()), "model": body.get("model")}
+            billing = {"run_id": run_id, "charged_micro": charged}
             if not body.get("stream"):
                 return reply(
                     {
@@ -317,7 +317,7 @@ def simulated_transport(start_balance_micro: int = 25_000_000) -> httpx.MockTran
             sse = "".join(f"data: {json.dumps(e)}\n\n" for e in events) + "data: [DONE]\n\n"
             return httpx.Response(
                 200,
-                headers={"content-type": "text/event-stream", "x-tovano-task-id": task_id},
+                headers={"content-type": "text/event-stream", "x-tovano-run-id": run_id},
                 stream=httpx.ByteStream(sse.encode()),
             )
         return fail(404, "not_found", "Not found.")

@@ -15,5 +15,5 @@ with client.chat.completions.create(
     result = stream.final_result()
 
 print(
-    f"\n\n{result.usage.total_tokens} tokens, charged {format_usd(result.tovano.charged_micro)} (task {stream.task_id})"
+    f"\n\n{result.usage.total_tokens} tokens, charged {format_usd(result.tovano.charged_micro)} (run {stream.run_id})"
 )

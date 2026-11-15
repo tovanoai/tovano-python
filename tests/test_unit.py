@@ -27,9 +27,9 @@ from tovano import (
     PermissionDeniedError,
     ProviderError,
     RateLimitError,
+    RunFailedError,
+    RunTimeoutError,
     SpendLimitReachedError,
-    TaskFailedError,
-    TaskTimeoutError,
     Tovano,
     WebhookVerificationError,
     format_usd,
@@ -105,12 +105,12 @@ def test_default_base_url(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_headers_customer_and_idempotency() -> None:
-    f = Fake(ok({"id": "tsk_1", "status": "queued"}), ok({"id": "tsk_1"}))
+    f = Fake(ok({"id": "run_1", "status": "queued"}), ok({"id": "run_1"}))
     c = f.client(customer="default-cust", app_info="myapp/2.0")
-    c.tasks.create(model="image/flux-1.1-pro", input={"prompt": "x"}, customer="acme")
-    c.tasks.get("tsk_1")
+    c.runs.create(model="image/flux-1.1-pro", input={"prompt": "x"}, customer="acme")
+    c.runs.get("run_1")
     post, get = f.requests
-    assert str(post.url) == "https://api.example.test/v1/tasks"
+    assert str(post.url) == "https://api.example.test/v1/runs"
     assert post.headers["authorization"] == "Bearer tvn_live_test"
     assert post.headers["user-agent"].startswith("tovano-python/")
     assert post.headers["user-agent"].endswith(" myapp/2.0")
@@ -126,10 +126,10 @@ def test_paths_and_queries() -> None:
     )
     c = f.client()
     c.models.get("image/flux-1.1-pro")
-    c.tasks.list(status="completed", customer="a b", limit=5)
+    c.runs.list(status="completed", customer="a b", limit=5)
     c.usage(group_by="customer", from_="2026-11-01")
     assert str(f.requests[0].url) == "https://api.example.test/v1/models/image/flux-1.1-pro"
-    assert str(f.requests[1].url) == "https://api.example.test/v1/tasks?status=completed&customer=a+b&limit=5"
+    assert str(f.requests[1].url) == "https://api.example.test/v1/runs?status=completed&customer=a+b&limit=5"
     assert str(f.requests[2].url) == "https://api.example.test/v1/usage?group_by=customer&from=2026-11-01"
 
 
@@ -160,11 +160,11 @@ def test_objects_are_dicts_with_attributes() -> None:
             }
         )
     )
-    t = f.client().tasks.get("t")
+    t = f.client().runs.get("t")
     assert t.id == t["id"] == "t"
     assert t.output.images[0].url == "u"
     assert t.steps[0].id == "s"
-    assert isinstance(t.steps[0], tovano.Task)
+    assert isinstance(t.steps[0], tovano.Run)
     assert t.customer is None  # declared but missing → None
     with pytest.raises(AttributeError):
         _ = t.no_such_field
@@ -220,10 +220,10 @@ def test_retries_and_keeps_idempotency_key() -> None:
     f = Fake(
         err(429, "rate_limited", {"retry-after": "0"}),
         err(500, "internal_error", {"retry-after": "0"}),
-        ok({"id": "tsk_1", "status": "queued"}),
+        ok({"id": "run_1", "status": "queued"}),
     )
-    t = f.client().tasks.create(model="m", input={})
-    assert t.id == "tsk_1"
+    t = f.client().runs.create(model="m", input={})
+    assert t.id == "run_1"
     assert len(f.requests) == 3
     assert len({r.headers["idempotency-key"] for r in f.requests}) == 1
 
@@ -265,7 +265,7 @@ def test_timeout() -> None:
         f.client(max_retries=0).balance()
 
 
-# ------------------------------------------------------------------ tasks
+# ------------------------------------------------------------------ runs
 
 
 def test_wait_polls_until_done() -> None:
@@ -274,23 +274,23 @@ def test_wait_polls_until_done() -> None:
         ok({"id": "t", "status": "running"}),
         ok({"id": "t", "status": "completed"}),
     )
-    assert f.client().tasks.wait("t", interval=0.001).status == "completed"
+    assert f.client().runs.wait("t", interval=0.001).status == "completed"
     assert len(f.requests) == 3
 
 
 def test_wait_times_out() -> None:
     f = Fake(*[ok({"id": "t", "status": "running"}) for _ in range(50)])
-    with pytest.raises(TaskTimeoutError) as e:
-        f.client().tasks.wait("t", interval=0.005, timeout=0.03)
-    assert e.value.task_id == "t"
+    with pytest.raises(RunTimeoutError) as e:
+        f.client().runs.wait("t", interval=0.005, timeout=0.03)
+    assert e.value.run_id == "t"
 
 
 def test_run_raise_on_failure() -> None:
     failed = {"id": "t", "status": "failed", "error": {"code": "provider_error", "message": "boom"}}
     f = Fake(ok({"id": "t", "status": "queued"}), ok(failed))
-    with pytest.raises(TaskFailedError, match="boom") as e:
-        f.client().tasks.run(model="m", input={}, raise_on_failure=True, interval=0.001)
-    assert e.value.task.id == "t"
+    with pytest.raises(RunFailedError, match="boom") as e:
+        f.client().runs.run(model="m", input={}, raise_on_failure=True, interval=0.001)
+    assert e.value.run.id == "t"
 
 
 def test_iterate_pages() -> None:
@@ -298,7 +298,7 @@ def test_iterate_pages() -> None:
         ok({"object": "list", "data": [{"id": "a"}, {"id": "b"}], "next_cursor": "c1", "has_more": True}),
         ok({"object": "list", "data": [{"id": "c"}], "next_cursor": None, "has_more": False}),
     )
-    assert [t.id for t in f.client().tasks.iterate(limit=2)] == ["a", "b", "c"]
+    assert [t.id for t in f.client().runs.iterate(limit=2)] == ["a", "b", "c"]
     assert "cursor=c1" in str(f.requests[1].url)
 
 
@@ -309,7 +309,7 @@ def sse(*events: str) -> httpx.Response:
     body = "".join(f"data: {e}\n\n" for e in events).encode()
     return httpx.Response(
         200,
-        headers={"content-type": "text/event-stream", "x-tovano-task-id": "tsk_s"},
+        headers={"content-type": "text/event-stream", "x-tovano-run-id": "run_s"},
         stream=httpx.ByteStream(body),
     )
 
@@ -329,7 +329,7 @@ USAGE = json.dumps(
     {
         "choices": [],
         "usage": {"prompt_tokens": 3, "completion_tokens": 2, "total_tokens": 5},
-        "tovano": {"task_id": "tsk_s", "charged_micro": 11},
+        "tovano": {"run_id": "run_s", "charged_micro": 11},
     }
 )
 
@@ -337,7 +337,7 @@ USAGE = json.dumps(
 def test_stream_iterates_and_collects() -> None:
     f = Fake(sse(chunk("Hel"), chunk("lo"), chunk(None, "stop"), USAGE, "[DONE]"))
     stream = f.client().chat.completions.create(model="m", messages=[], stream=True)
-    assert stream.task_id == "tsk_s"
+    assert stream.run_id == "run_s"
     text = "".join(c.choices[0].delta.content or "" for c in stream if c.choices)
     assert text == "Hello"
     body = json.loads(f.requests[0].content)
@@ -390,21 +390,21 @@ async def test_async_errors() -> None:
     f = Fake(err(402, "spend_limit_reached"))
     async with f.aclient() as c:
         with pytest.raises(SpendLimitReachedError):
-            await c.tasks.create(model="m", input={})
+            await c.runs.create(model="m", input={})
 
 
 # ------------------------------------------------------------------ webhooks
 
 SECRET = "whsec_test"
-BODY = json.dumps({"id": "tsk_1", "object": "task", "status": "completed"})
+BODY = json.dumps({"id": "run_1", "object": "run", "status": "completed"})
 
 
 def test_webhook_sign_verify() -> None:
     sig = webhooks.sign(BODY, SECRET)
     assert webhooks.verify(BODY, sig, SECRET)
     assert webhooks.verify(BODY.encode(), sig, SECRET)
-    task = webhooks.construct_event(BODY, sig, SECRET)
-    assert task.id == "tsk_1" and isinstance(task, tovano.Task)
+    run = webhooks.construct_event(BODY, sig, SECRET)
+    assert run.id == "run_1" and isinstance(run, tovano.Run)
 
 
 def test_webhook_matches_server_format() -> None:

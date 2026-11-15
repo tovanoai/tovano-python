@@ -12,7 +12,7 @@ The official Python client for [Tovano](https://tovano.ai): one API key, one pre
 ## Install
 
 ```bash
-pip install tovano
+pip install "git+https://github.com/tovanoai/tovano-python"
 ```
 
 ```bash
@@ -32,17 +32,17 @@ from tovano import Tovano, format_usd
 
 client = Tovano()  # reads TOVANO_API_KEY
 
-task = client.tasks.run(
+run = client.runs.run(
     model="image/flux-1.1-pro",
     input={"prompt": "Product photo of a blue ceramic mug", "n": 2},
 )
-print(task.status, task.units, format_usd(task.charged_micro))  # completed 2 $0.096
-print(task.output.images[0].url)
+print(run.status, run.units, format_usd(run.charged_micro))  # completed 2 $0.096
+print(run.output.images[0].url)
 ```
 
 Money is always an integer number of micro-dollars (1 USD = 1_000_000) in fields ending in `_micro`. `format_usd` turns it into text; `usd_to_micro` and `micro_to_usd` convert exactly (with `Decimal`).
 
-Responses are typed objects that are also dicts: `task.status` and `task["status"]` both work, and `json.dumps(task)` works.
+Responses are typed objects that are also dicts: `run.status` and `run["status"]` both work, and `json.dumps(run)` works.
 
 ## Try it without a key
 
@@ -55,13 +55,13 @@ uv run python examples/quickstart.py
 
 | Example | Shows |
 |---|---|
-| `quickstart.py` | Balance, run an image task, charge |
+| `quickstart.py` | Balance, an image run, charge |
 | `models.py` | The catalogue with prices |
 | `chat.py` / `chat_stream.py` | OpenAI-compatible chat, with streaming |
 | `async_batch.py` | Several models at once with asyncio |
 | `agent_job.py` | An agent job with one charge per step |
 | `customer_usage.py` | Customer tags and spend per customer |
-| `errors.py` | Typed errors, retries, failed tasks |
+| `errors.py` | Typed errors, retries, failed runs |
 | `webhook_server.py` | Receive and verify webhooks (standard library) |
 
 ## Client options
@@ -91,8 +91,8 @@ from tovano import AsyncTovano
 async def main():
     async with AsyncTovano() as client:
         a, b = await asyncio.gather(
-            client.tasks.run(model="image/flux-1.1-pro", input={"prompt": "Mug"}),
-            client.tasks.run(model="audio/eleven-multilingual-v2", input={"text": "Hello"}),
+            client.runs.run(model="image/flux-1.1-pro", input={"prompt": "Mug"}),
+            client.runs.run(model="audio/eleven-multilingual-v2", input={"text": "Hello"}),
         )
 
 
@@ -101,27 +101,27 @@ asyncio.run(main())
 
 `AsyncTovano` has the same methods as `Tovano`, as coroutines.
 
-## Tasks
+## Runs
 
 ```python
-task = client.tasks.create(
+run = client.runs.create(
     model="video/kling-2.1-pro",
     input={"prompt": "Waves on a beach", "duration": 5},
     webhook_url="https://example.com/tovano-webhook",  # optional
 )
-done = client.tasks.wait(task.id, timeout=120)
+done = client.runs.wait(run.id, timeout=120)
 if done.status == "failed":
     print(done.error.message, "(not charged)")
 ```
 
 | Method | What it does |
 |---|---|
-| `tasks.create(model=, input=, customer=, webhook_url=)` | Starts a task. POSTs get a random `Idempotency-Key`, so a retry never runs twice. |
-| `tasks.get(task_id)` | Status, output, units and charge |
-| `tasks.wait(task_id, interval=0.5, timeout=600)` | Polls until done. Raises `TaskTimeoutError`. |
-| `tasks.run(..., raise_on_failure=False)` | `create` + `wait` |
-| `tasks.list(status=, model=, customer=, type=, limit=, cursor=)` | One `Page` (iterable), newest first |
-| `tasks.iterate(**filters)` | Every match, paging for you |
+| `runs.create(model=, input=, customer=, webhook_url=)` | Starts a run. POSTs get a random `Idempotency-Key`, so a retry never runs twice. |
+| `runs.get(run_id)` | Status, output, units and charge |
+| `runs.wait(run_id, interval=0.5, timeout=600)` | Polls until done. Raises `RunTimeoutError`. |
+| `runs.run(..., raise_on_failure=False)` | `create` + `wait` |
+| `runs.list(status=, model=, customer=, type=, limit=, cursor=)` | One `Page` (iterable), newest first |
+| `runs.iterate(**filters)` | Every match, paging for you |
 
 ## Chat (OpenAI-compatible)
 
@@ -139,7 +139,7 @@ with client.chat.completions.create(model="text/gpt-4.1-mini", messages=messages
     result = stream.final_result()  # content, finish_reason, usage, tovano
 ```
 
-Leaving the `with` block early stops the stream; tokens already produced are charged. `stream.task_id` is the task that records the call. Async: `async for chunk in await client.chat.completions.create(..., stream=True)`.
+Leaving the `with` block early stops the stream; tokens already produced are charged. `stream.run_id` is the run that records the call. Async: `async for chunk in await client.chat.completions.create(..., stream=True)`.
 
 Any OpenAI client works too: set its base URL to `https://api.tovano.ai/v1` and use your Tovano key.
 
@@ -157,7 +157,7 @@ usage = client.usage(group_by="customer", from_="2026-11-01")
 ## Customer tags
 
 ```python
-client.tasks.create(model=model, input=inp, customer="acme")  # on a task or chat call
+client.runs.create(model=model, input=inp, customer="acme")  # on a run or chat call
 client.balance(customer="acme")  # any call, as an option
 acme = client.with_options(customer="acme")  # a client that tags every call
 ```
@@ -167,7 +167,7 @@ acme = client.with_options(customer="acme")  # a client that tags every call
 ```python
 from tovano import webhooks, WebhookVerificationError
 
-task = webhooks.construct_event(
+run = webhooks.construct_event(
     raw_body,  # the raw bytes, as received
     request.headers["Tovano-Signature"],
     os.environ["TOVANO_WEBHOOK_SECRET"],
@@ -186,15 +186,15 @@ Every failed call raises a `TovanoError` with `status`, `code`, `type`, `param`,
 | `InsufficientCreditsError` | 402 | `insufficient_credits` | Add credits in the dashboard |
 | `SpendLimitReachedError` | 402 | `spend_limit_reached` | Monthly spend limit reached |
 | `PermissionDeniedError` | 403 | `forbidden` | |
-| `NotFoundError` | 404 | `not_found` | Unknown model or task |
+| `NotFoundError` | 404 | `not_found` | Unknown model or run |
 | `ConflictError` | 409 | `conflict` | Idempotency-Key reused with another body |
 | `InvalidRequestError` | 422 | `invalid_request` | `param` names the field |
 | `RateLimitError` | 429 | `rate_limited` | Retried for you; `retry_after` in seconds |
 | `InternalServerError` | 5xx | `internal_error` | Retried for you |
 | `ProviderError` | 502 | `provider_error` | The model provider failed; not charged |
 | `APIConnectionError` / `APITimeoutError` | 0 | | No response |
-| `TaskTimeoutError` | | `task_timeout` | `tasks.wait()` gave up; the task keeps running |
-| `TaskFailedError` | | | `tasks.run(raise_on_failure=True)` |
+| `RunTimeoutError` | | `run_timeout` | `runs.wait()` gave up; the run keeps running |
+| `RunFailedError` | | | `runs.run(raise_on_failure=True)` |
 
 `InsufficientCreditsError` and `SpendLimitReachedError` both subclass `PaymentRequiredError`.
 
@@ -209,10 +209,6 @@ uv run mypy
 uv run ruff check .
 uv build
 ```
-
-## Support
-
-Questions and bug reports: [tovano.ai/contact/support](https://tovano.ai/contact/support).
 
 ## License
 

@@ -8,8 +8,8 @@ from tovano import (
     InvalidRequestError,
     NotFoundError,
     RateLimitError,
+    RunFailedError,
     SpendLimitReachedError,
-    TaskFailedError,
     TovanoError,
 )
 
@@ -28,19 +28,19 @@ def try_it(label, fn):
         print(f"{label}: not found ({e.message})")
     except InvalidRequestError as e:
         print(f"{label}: invalid {e.param}: {e.message}")
-    except TaskFailedError as e:
-        print(f"{label}: task {e.task.id} failed, not charged: {e.message}")
+    except RunFailedError as e:
+        print(f"{label}: run {e.run.id} failed, not charged: {e.message}")
     except APIConnectionError as e:
         print(f"{label}: network problem: {e.message}")
     except TovanoError as e:
         print(f"{label}: {e.status} {e.code} (request {e.request_id})")
 
 
-try_it("unknown model", lambda: client.tasks.create(model="image/nope", input={"prompt": "x"}))
-# A failed task is returned (not raised) and never charged. Ask for an error instead:
+try_it("unknown model", lambda: client.runs.create(model="image/nope", input={"prompt": "x"}))
+# A failed run is returned (not raised) and never charged. Ask for an error instead:
 try_it(
-    "failing task",
-    lambda: client.tasks.run(model="image/flux-1.1-pro", input={"prompt": "[fail] test"}, raise_on_failure=True),
+    "failing run",
+    lambda: client.runs.run(model="image/flux-1.1-pro", input={"prompt": "[fail] test"}, raise_on_failure=True),
 )
 # Retries and timeouts are configurable per client or per call:
 try_it("custom retries", lambda: client.balance(max_retries=5, timeout=10))

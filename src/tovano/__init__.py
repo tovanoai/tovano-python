@@ -4,8 +4,8 @@ One API key, one prepaid balance and one invoice for image, video, audio and tex
 
 >>> from tovano import Tovano
 >>> client = Tovano()  # reads TOVANO_API_KEY
->>> task = client.tasks.run(model="image/flux-1.1-pro", input={"prompt": "A blue ceramic mug"})
->>> task.status, task.charged_micro
+>>> run = client.runs.run(model="image/flux-1.1-pro", input={"prompt": "A blue ceramic mug"})
+>>> run.status, run.charged_micro
 ('completed', 48000)
 """
 
@@ -25,9 +25,9 @@ from ._errors import (
     PermissionDeniedError,
     ProviderError,
     RateLimitError,
+    RunFailedError,
+    RunTimeoutError,
     SpendLimitReachedError,
-    TaskFailedError,
-    TaskTimeoutError,
     TovanoError,
     WebhookVerificationError,
 )
@@ -41,8 +41,8 @@ from ._types import (
     OutputFile,
     Page,
     Price,
-    Task,
-    TaskError,
+    Run,
+    RunError,
     TovanoObject,
     Usage,
     UsageRow,
@@ -70,8 +70,8 @@ __all__ = [
     "ProviderError",
     "APIConnectionError",
     "APITimeoutError",
-    "TaskTimeoutError",
-    "TaskFailedError",
+    "RunTimeoutError",
+    "RunFailedError",
     "WebhookVerificationError",
     # money
     "MICRO_PER_USD",
@@ -86,8 +86,8 @@ __all__ = [
     "TovanoObject",
     "Model",
     "Price",
-    "Task",
-    "TaskError",
+    "Run",
+    "RunError",
     "OutputFile",
     "Balance",
     "Usage",

@@ -1,7 +1,7 @@
 """Typed objects for every response.
 
-Each object is a ``dict`` with attribute access, so ``task.status`` and
-``task["status"]`` both work, ``json.dumps(task)`` works, and fields the API adds
+Each object is a ``dict`` with attribute access, so ``run.status`` and
+``run["status"]`` both work, ``json.dumps(run)`` works, and fields the API adds
 later are kept. Money is always an integer number of micro-dollars
 (1 USD = 1_000_000) in fields ending in ``_micro``.
 """
@@ -15,9 +15,9 @@ __all__ = [
     "Price",
     "Model",
     "OutputFile",
-    "TaskError",
-    "TaskUsage",
-    "Task",
+    "RunError",
+    "RunUsage",
+    "Run",
     "Balance",
     "UsageRow",
     "UsageTotal",
@@ -32,12 +32,12 @@ __all__ = [
     "ChatCompletionDelta",
     "ChatCompletionChunkChoice",
     "ChatCompletionChunk",
-    "TaskStatus",
+    "RunStatus",
     "ModelType",
     "UsageGroupBy",
 ]
 
-TaskStatus = Literal["queued", "running", "completed", "failed"]
+RunStatus = Literal["queued", "running", "completed", "failed"]
 ModelType = Literal["image", "video", "audio", "text", "agent"]
 UsageGroupBy = Literal["model", "customer", "day", "project", "key"]
 
@@ -146,23 +146,23 @@ class OutputFile(TovanoObject):
     size: int
 
 
-class TaskError(TovanoObject):
+class RunError(TovanoObject):
     code: str
     message: str
 
 
-class TaskUsage(TovanoObject):
+class RunUsage(TovanoObject):
     input_tokens: int
     output_tokens: int
 
 
-class Task(TovanoObject):
+class Run(TovanoObject):
     """A model run: status, output, units and charge."""
 
     id: str
     object: str
     model: str
-    status: TaskStatus
+    status: RunStatus
     customer: Optional[str]
     """Your own end-customer id, if you sent one."""
     project_id: str
@@ -171,46 +171,53 @@ class Task(TovanoObject):
     name: Optional[str]
     input: Dict[str, Any]
     output: Optional[TovanoObject]
-    """Set when the task completed, e.g. ``output.images[0].url``."""
+    """Set when the run completed, e.g. ``output.images[0].url``."""
     unit: str
     units: float
-    usage: Optional[TaskUsage]
+    usage: Optional[RunUsage]
     estimate_micro: int
     charged_micro: int
-    """What the task cost. Always 0 for a failed task."""
-    error: Optional[TaskError]
+    """What the run cost. Always 0 for a failed run."""
+    error: Optional[RunError]
     source: str
     api_key_prefix: Optional[str]
     duration_ms: Optional[int]
-    steps: Optional[List["Task"]]
-    """Agent jobs: one task per step, each with its own charge."""
+    steps: Optional[List["Run"]]
+    """Agent jobs: one run per step, each with its own charge."""
     created_at: str
     started_at: Optional[str]
     completed_at: Optional[str]
 
 
-Task._fields = {"error": TaskError, "usage": TaskUsage, "steps": [Task]}
+Run._fields = {"error": RunError, "usage": RunUsage, "steps": [Run]}
 
 
 class Balance(TovanoObject):
     object: str
     balance_micro: int
     reserved_micro: int
-    """Held for tasks that are still running."""
+    """Held for runs that are still running."""
     available_micro: int
     """What you can spend now."""
     spent_this_month_micro: int
     spend_limit_micro: Optional[int]
     low_balance_alert_micro: Optional[int]
     currency: str
+    balance_credits: float
+    """``available_micro`` in credits, as the dashboard shows it (1 credit = US$0.01)."""
 
 
 class UsageRow(TovanoObject):
     key: Optional[str]
     """The model id, customer tag, day, project id or key prefix."""
     type: Optional[str]
-    tasks: int
+    runs: int
+    """Completed (charged) runs. Same as ``succeeded``."""
+    succeeded: int
     failed: int
+    """Failed runs. Never charged."""
+    all: int
+    """``succeeded`` plus ``failed``."""
     unit: Optional[str]
     units: Optional[float]
     charged_micro: int
@@ -219,8 +226,10 @@ class UsageRow(TovanoObject):
 
 
 class UsageTotal(TovanoObject):
-    tasks: int
+    runs: int
+    succeeded: int
     failed: int
+    all: int
     charged_micro: int
     input_tokens: int
     output_tokens: int
@@ -232,7 +241,7 @@ class Usage(TovanoObject):
     group_by: UsageGroupBy
     to: str
     total_micro: int
-    total_tasks: int
+    total_runs: int
     total: UsageTotal
     data: List[UsageRow]
 
@@ -273,7 +282,7 @@ class ChatUsage(TovanoObject):
 class ChatBilling(TovanoObject):
     """Tovano's billing details for a chat call."""
 
-    task_id: str
+    run_id: str
     charged_micro: int
 
 

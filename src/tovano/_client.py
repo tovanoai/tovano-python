@@ -34,9 +34,9 @@ from ._base import (
     retry_delay,
     should_retry,
 )
-from ._errors import APIConnectionError, APITimeoutError, TaskFailedError, TaskTimeoutError
+from ._errors import APIConnectionError, APITimeoutError, RunFailedError, RunTimeoutError
 from ._streaming import AsyncChatCompletionStream, ChatCompletionStream
-from ._types import Balance, ChatCompletion, Model, Page, Task, Usage
+from ._types import Balance, ChatCompletion, Model, Page, Run, Usage
 
 __all__ = ["Tovano", "AsyncTovano"]
 
@@ -64,7 +64,7 @@ class _Options:
         self.max_retries = max_retries
 
 
-def _task_body(
+def _run_body(
     model: str, input: Mapping[str, Any], customer: Optional[str], webhook_url: Optional[str]
 ) -> Dict[str, Any]:
     return clean_body({"model": model, "input": dict(input), "customer": customer, "webhook_url": webhook_url})
@@ -169,7 +169,7 @@ class Models:
         return Model(self._t.json("GET", model_path(model_id), _Options(**opts)))
 
 
-class Tasks:
+class Runs:
     def __init__(self, t: _SyncTransport) -> None:
         self._t = t
 
@@ -181,13 +181,13 @@ class Tasks:
         customer: Optional[str] = None,
         webhook_url: Optional[str] = None,
         **opts: Any,
-    ) -> Task:
-        """Starts a task. It runs in the background: :meth:`wait` for it, or receive a webhook."""
-        body = _task_body(model, input, customer, webhook_url)
-        return Task(self._t.json("POST", "/v1/tasks", _Options(**opts), body=body))
+    ) -> Run:
+        """Starts a run. It runs in the background: :meth:`wait` for it, or receive a webhook."""
+        body = _run_body(model, input, customer, webhook_url)
+        return Run(self._t.json("POST", "/v1/runs", _Options(**opts), body=body))
 
-    def get(self, task_id: str, **opts: Any) -> Task:
-        return Task(self._t.json("GET", f"/v1/tasks/{quote(task_id, safe='')}", _Options(**opts)))
+    def get(self, run_id: str, **opts: Any) -> Run:
+        return Run(self._t.json("GET", f"/v1/runs/{quote(run_id, safe='')}", _Options(**opts)))
 
     def list(
         self,
@@ -200,17 +200,17 @@ class Tasks:
         limit: Optional[int] = None,
         cursor: Optional[str] = None,
         **opts: Any,
-    ) -> "Page[Task]":
-        """One page of tasks, newest first."""
+    ) -> "Page[Run]":
+        """One page of runs, newest first."""
         params = dict(
             status=status, model=model, customer=customer, type=type, project_id=project_id, limit=limit, cursor=cursor
         )
-        raw = self._t.json("GET", "/v1/tasks", _Options(**opts), params=params)
-        raw["data"] = [Task(t) for t in raw["data"]]
+        raw = self._t.json("GET", "/v1/runs", _Options(**opts), params=params)
+        raw["data"] = [Run(t) for t in raw["data"]]
         return Page(raw)
 
-    def iterate(self, **filters: Any) -> Iterator[Task]:
-        """Every task matching the filters, newest first, fetching pages as needed."""
+    def iterate(self, **filters: Any) -> Iterator[Run]:
+        """Every run matching the filters, newest first, fetching pages as needed."""
         cursor: Optional[str] = None
         while True:
             page = self.list(**filters, cursor=cursor)
@@ -219,17 +219,17 @@ class Tasks:
             if not cursor:
                 return
 
-    def wait(self, task_id: str, *, interval: float = 0.5, timeout: float = 600.0, **opts: Any) -> Task:
-        """Polls until the task completes or fails. Raises :class:`TaskTimeoutError` after ``timeout`` seconds."""
+    def wait(self, run_id: str, *, interval: float = 0.5, timeout: float = 600.0, **opts: Any) -> Run:
+        """Polls until the run completes or fails. Raises :class:`RunTimeoutError` after ``timeout`` seconds."""
         deadline = time.monotonic() + timeout
         delay = interval
         while True:
-            task = self.get(task_id, **opts)
-            if task.status in _FINISHED:
-                return task
+            run = self.get(run_id, **opts)
+            if run.status in _FINISHED:
+                return run
             left = deadline - time.monotonic()
             if left <= 0:
-                raise TaskTimeoutError(task_id, timeout)
+                raise RunTimeoutError(run_id, timeout)
             time.sleep(min(delay, left))
             delay = min(delay * 1.5, 5.0)
 
@@ -244,15 +244,15 @@ class Tasks:
         wait_timeout: float = 600.0,
         interval: float = 0.5,
         **opts: Any,
-    ) -> Task:
-        """Creates a task and waits for it. A failed task is returned (uncharged) unless ``raise_on_failure``."""
-        task = self.create(model=model, input=input, customer=customer, webhook_url=webhook_url, **opts)
-        if task.status not in _FINISHED:
+    ) -> Run:
+        """Creates a run and waits for it. A failed run is returned (uncharged) unless ``raise_on_failure``."""
+        run = self.create(model=model, input=input, customer=customer, webhook_url=webhook_url, **opts)
+        if run.status not in _FINISHED:
             wait_opts = {k: v for k, v in opts.items() if k != "idempotency_key"}
-            task = self.wait(task.id, interval=interval, timeout=wait_timeout, **wait_opts)
-        if raise_on_failure and task.status == "failed":
-            raise TaskFailedError(task)
-        return task
+            run = self.wait(run.id, interval=interval, timeout=wait_timeout, **wait_opts)
+        if raise_on_failure and run.status == "failed":
+            raise RunFailedError(run)
+        return run
 
 
 class ChatCompletions:
@@ -320,7 +320,7 @@ class Webhooks:
 
     def construct_event(
         self, body: _webhooks.Body, signature: Optional[str], secret: Optional[str] = None, **kw: Any
-    ) -> Task:
+    ) -> Run:
         return _webhooks.construct_event(body, signature, self._key(secret), **kw)
 
     def sign(self, body: _webhooks.Body, secret: Optional[str] = None, timestamp: Optional[int] = None) -> str:
@@ -364,7 +364,7 @@ class Tovano(_ClientBase):
 
     >>> from tovano import Tovano
     >>> client = Tovano()  # reads TOVANO_API_KEY
-    >>> task = client.tasks.run(model="image/flux-1.1-pro", input={"prompt": "A blue mug"})
+    >>> run = client.runs.run(model="image/flux-1.1-pro", input={"prompt": "A blue mug"})
 
     Args:
         api_key: Default: the ``TOVANO_API_KEY`` environment variable.
@@ -383,7 +383,7 @@ class Tovano(_ClientBase):
         self._http_client = http_client
         self._t = _SyncTransport(self._config, http_client)
         self.models = Models(self._t)
-        self.tasks = Tasks(self._t)
+        self.runs = Runs(self._t)
         self.chat = Chat(self._t)
 
     def balance(self, **opts: Any) -> Balance:
@@ -513,7 +513,7 @@ class AsyncModels:
         return Model(await self._t.json("GET", model_path(model_id), _Options(**opts)))
 
 
-class AsyncTasks:
+class AsyncRuns:
     def __init__(self, t: _AsyncTransport) -> None:
         self._t = t
 
@@ -525,12 +525,12 @@ class AsyncTasks:
         customer: Optional[str] = None,
         webhook_url: Optional[str] = None,
         **opts: Any,
-    ) -> Task:
-        body = _task_body(model, input, customer, webhook_url)
-        return Task(await self._t.json("POST", "/v1/tasks", _Options(**opts), body=body))
+    ) -> Run:
+        body = _run_body(model, input, customer, webhook_url)
+        return Run(await self._t.json("POST", "/v1/runs", _Options(**opts), body=body))
 
-    async def get(self, task_id: str, **opts: Any) -> Task:
-        return Task(await self._t.json("GET", f"/v1/tasks/{quote(task_id, safe='')}", _Options(**opts)))
+    async def get(self, run_id: str, **opts: Any) -> Run:
+        return Run(await self._t.json("GET", f"/v1/runs/{quote(run_id, safe='')}", _Options(**opts)))
 
     async def list(
         self,
@@ -543,15 +543,15 @@ class AsyncTasks:
         limit: Optional[int] = None,
         cursor: Optional[str] = None,
         **opts: Any,
-    ) -> "Page[Task]":
+    ) -> "Page[Run]":
         params = dict(
             status=status, model=model, customer=customer, type=type, project_id=project_id, limit=limit, cursor=cursor
         )
-        raw = await self._t.json("GET", "/v1/tasks", _Options(**opts), params=params)
-        raw["data"] = [Task(t) for t in raw["data"]]
+        raw = await self._t.json("GET", "/v1/runs", _Options(**opts), params=params)
+        raw["data"] = [Run(t) for t in raw["data"]]
         return Page(raw)
 
-    async def iterate(self, **filters: Any) -> AsyncIterator[Task]:
+    async def iterate(self, **filters: Any) -> AsyncIterator[Run]:
         cursor: Optional[str] = None
         while True:
             page = await self.list(**filters, cursor=cursor)
@@ -561,17 +561,17 @@ class AsyncTasks:
             if not cursor:
                 return
 
-    async def wait(self, task_id: str, *, interval: float = 0.5, timeout: float = 600.0, **opts: Any) -> Task:
+    async def wait(self, run_id: str, *, interval: float = 0.5, timeout: float = 600.0, **opts: Any) -> Run:
         loop = asyncio.get_running_loop()
         deadline = loop.time() + timeout
         delay = interval
         while True:
-            task = await self.get(task_id, **opts)
-            if task.status in _FINISHED:
-                return task
+            run = await self.get(run_id, **opts)
+            if run.status in _FINISHED:
+                return run
             left = deadline - loop.time()
             if left <= 0:
-                raise TaskTimeoutError(task_id, timeout)
+                raise RunTimeoutError(run_id, timeout)
             await asyncio.sleep(min(delay, left))
             delay = min(delay * 1.5, 5.0)
 
@@ -586,14 +586,14 @@ class AsyncTasks:
         wait_timeout: float = 600.0,
         interval: float = 0.5,
         **opts: Any,
-    ) -> Task:
-        task = await self.create(model=model, input=input, customer=customer, webhook_url=webhook_url, **opts)
-        if task.status not in _FINISHED:
+    ) -> Run:
+        run = await self.create(model=model, input=input, customer=customer, webhook_url=webhook_url, **opts)
+        if run.status not in _FINISHED:
             wait_opts = {k: v for k, v in opts.items() if k != "idempotency_key"}
-            task = await self.wait(task.id, interval=interval, timeout=wait_timeout, **wait_opts)
-        if raise_on_failure and task.status == "failed":
-            raise TaskFailedError(task)
-        return task
+            run = await self.wait(run.id, interval=interval, timeout=wait_timeout, **wait_opts)
+        if raise_on_failure and run.status == "failed":
+            raise RunFailedError(run)
+        return run
 
 
 class AsyncChatCompletions:
@@ -646,14 +646,14 @@ class AsyncTovano(_ClientBase):
     """The asyncio version of :class:`Tovano`. Same arguments; ``http_client`` is an ``httpx.AsyncClient``.
 
     >>> async with AsyncTovano() as client:
-    ...     task = await client.tasks.run(model="image/flux-1.1-pro", input={"prompt": "A blue mug"})
+    ...     run = await client.runs.run(model="image/flux-1.1-pro", input={"prompt": "A blue mug"})
     """
 
     def __init__(self, *, http_client: Optional[httpx.AsyncClient] = None, **kwargs: Any) -> None:
         super().__init__(**kwargs)
         self._t = _AsyncTransport(self._config, http_client)
         self.models = AsyncModels(self._t)
-        self.tasks = AsyncTasks(self._t)
+        self.runs = AsyncRuns(self._t)
         self.chat = AsyncChat(self._t)
 
     async def balance(self, **opts: Any) -> Balance:

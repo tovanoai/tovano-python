@@ -1,6 +1,6 @@
-"""python examples/webhook_server.py — receive finished tasks (standard library only).
+"""python examples/webhook_server.py — receive finished runs (standard library only).
 
-Set TOVANO_WEBHOOK_SECRET (App → Settings → Webhooks) and pass webhook_url when you create a task.
+Set TOVANO_WEBHOOK_SECRET (App → Settings → Webhooks) and pass webhook_url when you create a run.
 """
 
 import json
@@ -18,13 +18,13 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):  # noqa: N802
         raw = self.rfile.read(int(self.headers["content-length"]))  # verify the raw bytes
         try:
-            task = webhooks.construct_event(raw, self.headers.get("tovano-signature"), SECRET)
+            run = webhooks.construct_event(raw, self.headers.get("tovano-signature"), SECRET)
         except WebhookVerificationError as e:
             self.send_response(400)
             self.end_headers()
             self.wfile.write(str(e).encode())
             return
-        print(f"{task.id} {task.status}, charged {task.charged_micro} micro-dollars")
+        print(f"{run.id} {run.status}, charged {run.charged_micro} micro-dollars")
         self.send_response(200)
         self.end_headers()
 
@@ -40,7 +40,7 @@ if "TOVANO_WEBHOOK_SECRET" in os.environ:
 else:
     # Without a secret: send ourselves a signed webhook the way Tovano does.
     threading.Thread(target=server.serve_forever, daemon=True).start()
-    body = json.dumps({"id": "tsk_example", "object": "task", "status": "completed", "charged_micro": 96000})
+    body = json.dumps({"id": "run_example", "object": "run", "status": "completed", "charged_micro": 96000})
     req = urllib.request.Request(
         "http://127.0.0.1:8788",
         data=body.encode(),
