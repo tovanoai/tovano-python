@@ -12,18 +12,13 @@ The official Python client for [Tovano](https://tovano.ai): one API key, one pre
 ## Install
 
 ```bash
-pip install "git+https://github.com/tovanoai/tovano-python"
+pip install tovano
 ```
 
 ```bash
 uv add tovano
 ```
 
-Or straight from GitHub:
-
-```bash
-pip install git+https://github.com/tovanoai/tovano-python
-```
 
 ## Quick start
 
